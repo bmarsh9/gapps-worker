@@ -1,0 +1,62 @@
+services:
+  db:
+    image: postgres:14
+    environment:
+      POSTGRES_USER: user
+      POSTGRES_PASSWORD: password
+      POSTGRES_DB: integrations
+      PGPORT: 5433
+    #    volumes:
+#      - postgres_data:/var/lib/postgresql/data
+    ports:
+      - "5433:5433"
+    profiles: ["default"]
+
+  api:
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5433/integrations
+      - GITHUB_RAW_URL=https://raw.githubusercontent.com/bmarsh9/gapps-integrations/refs/heads/main/integrations.json
+    depends_on:
+      - db
+    ports:
+      - "8080:8080"
+    restart: on-failure
+    profiles: ["default"]
+
+
+  worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    environment:
+      - INTEGRATIONS_BASE_URL=http://api:8080
+      - GITHUB_REPO_URL=https://github.com/bmarsh9/gapps-integrations
+      - GITHUB_RAW_URL=https://raw.githubusercontent.com/bmarsh9/gapps-integrations/refs/heads/main/integrations.json
+    deploy:
+      replicas: 2
+    depends_on:
+      - db
+    profiles: ["default"]
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: scheduler/Dockerfile
+    environment:
+      - INTEGRATIONS_BASE_URL=http://api:8080
+    depends_on:
+      - db
+    profiles: ["default"]
+
+  test-worker:
+    build:
+      context: .
+      dockerfile: worker/Dockerfile
+    command: pytest -s -v -p no:warnings -o log_cli=true tests
+    profiles: ["test"]
+
+volumes:
+  postgres_data:
