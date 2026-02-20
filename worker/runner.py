@@ -54,6 +54,9 @@ def run_integration(integration_name: str, config: dict, timeout: int = 3600) ->
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
 
+        # Set name from folder so entry.py doesn't need to define it
+        module.Runner.name = integration_name
+
         runner = module.Runner(config)
         return runner.run()
 
