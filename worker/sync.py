@@ -37,7 +37,7 @@ class GitHubSync:
         if os.path.isdir(git_dir):
             logger.info("Repo exists, pulling latest...")
             result = subprocess.run(
-                ["git", "pull"],
+                ["git", "pull", "origin", "main"],
                 cwd=Config.BASE_DIR,
                 capture_output=True,
                 text=True
