@@ -103,6 +103,7 @@ class Deployment(Base):
     integration_id = Column(
         Integer, ForeignKey("integrations.id", ondelete="CASCADE"), nullable=False
     )
+    tenant_id = Column(String, nullable=False)
 
     def as_dict(self):
         data = {c.name: getattr(self, c.name) for c in self.__table__.columns}

@@ -3,6 +3,7 @@ import glob
 import logging
 import importlib.util
 import sys
+import concurrent.futures
 from config import Config
 
 logger = logging.getLogger(__name__)
@@ -22,7 +23,7 @@ def run_integration(integration_name: str, config: dict, timeout: int = 3600) ->
         dict: The result from the runner
 
     Raises:
-        RuntimeError: If the integration or venv is not found
+        RuntimeError: If the integration or venv is not found or times out
     """
     integration_path = os.path.join(Config.INTEGRATIONS_DIR, integration_name)
     venv_path = os.path.join(Config.VENVS_DIR, integration_name)
@@ -58,7 +59,16 @@ def run_integration(integration_name: str, config: dict, timeout: int = 3600) ->
         module.Runner.name = integration_name
 
         runner = module.Runner(config)
-        return runner.run()
+
+        # Run with timeout enforcement
+        with concurrent.futures.ThreadPoolExecutor(max_workers=1) as executor:
+            future = executor.submit(runner.run)
+            try:
+                return future.result(timeout=timeout)
+            except concurrent.futures.TimeoutError:
+                raise RuntimeError(
+                    f"Integration '{integration_name}' timed out after {timeout}s"
+                )
 
     finally:
         # Clean up injected paths from sys.path
