@@ -56,7 +56,7 @@ def init_integrations():
     }), 200
 
 
-@app.route("/delete/integrations", methods=["DELETE", "GET"])
+@app.route("/integrations", methods=["DELETE", "GET"])
 def delete_all_integrations():
     try:
         integrations = db_session.query(Integration).all()
@@ -134,6 +134,30 @@ def get_job(job_id):
         return jsonify(job.as_dict())
     return jsonify({"error": "Job not found"}), 404
 
+@app.route("/jobs", methods=["DELETE"])
+def delete_jobs():
+    before = request.args.get('before', None)
+    after = request.args.get('after', None)
+
+    if not before and not after:
+        return jsonify({"error": "At least one of 'before' or 'after' is required"}), 400
+
+    query = db_session.query(Job)
+
+    if before:
+        query = query.filter(Job.finished_at <= datetime.fromisoformat(before))
+
+    if after:
+        query = query.filter(Job.finished_at >= datetime.fromisoformat(after))
+
+    try:
+        count = query.count()
+        query.delete()
+        db_session.commit()
+        return jsonify({"deleted": count}), 200
+    except Exception as e:
+        db_session.rollback()
+        return jsonify({"error": str(e)}), 500
 
 @app.route("/jobs/next", methods=["GET"])
 def get_next_job():
@@ -185,9 +209,8 @@ def complete_job(job_id):
 @app.route("/deployments", methods=["POST"])
 def create_deployment():
     data = request.get_json()
-    if not all(k in data for k in ["integration_id", "config"]):
+    if not all(k in data for k in ["tenant_id", "integration_id", "config"]):
         abort(400, "Missing required fields")
-
     integration = db_session.get(Integration, data["integration_id"])
     if not integration:
         abort(404, "Integration not found")
@@ -198,6 +221,7 @@ def create_deployment():
             schedule=data.get("schedule"),
             queue=data.get("queue"),
             timeout=data.get("timeout", 3600),
+            tenant_id=data.get("tenant_id")
         )
         db_session.add(deployment)
         db_session.commit()
@@ -267,27 +291,30 @@ def get_deployment(id):
 
 @app.route("/jobs", methods=["GET"])
 def list_jobs():
-    # Get pagination parameters from query string
     page = request.args.get('page', 1, type=int)
     per_page = request.args.get('per_page', 20, type=int)
+    before = request.args.get('before', None)  # e.g. 2026-01-01
+    after = request.args.get('after', None)    # e.g. 2025-01-01
 
-    # Limit per_page to prevent abuse
     per_page = min(per_page, 100)
 
-    # Get total count
-    total_jobs = db_session.query(Job).count()
+    query = db_session.query(Job)
 
-    # Calculate offset
+    if before:
+        query = query.filter(Job.finished_at <= datetime.fromisoformat(before))
+
+    if after:
+        query = query.filter(Job.finished_at >= datetime.fromisoformat(after))
+
+    total_jobs = query.count()
     offset = (page - 1) * per_page
 
-    # Query with pagination
-    jobs = db_session.query(Job) \
+    jobs = query \
         .order_by(desc(Job.created_at)) \
         .limit(per_page) \
         .offset(offset) \
         .all()
 
-    # Return paginated response
     return jsonify({
         'jobs': [i.as_dict() for i in jobs],
         'pagination': {

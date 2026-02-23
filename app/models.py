@@ -46,6 +46,7 @@ class Integration(Base):
         schedule: str = None,
         queue: str = "default",
         timeout: int = 3600,
+        tenant_id: str = None
     ):
         self.validate_config(config)
 
@@ -62,6 +63,7 @@ class Integration(Base):
             timeout=timeout,
             queue=queue,
             status="scheduled",
+            tenant_id=tenant_id
         )
 
     @staticmethod
