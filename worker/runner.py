@@ -57,6 +57,7 @@ def run_integration(integration_name: str, config: dict, timeout: int = 3600) ->
 
         # Set name from folder so entry.py doesn't need to define it
         module.Runner.name = integration_name
+        module.Runner.api_server = Config.INTEGRATIONS_BASE_URL
 
         runner = module.Runner(config)
 

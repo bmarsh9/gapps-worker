@@ -56,7 +56,7 @@ def init_integrations():
     }), 200
 
 
-@app.route("/integrations", methods=["DELETE", "GET"])
+@app.route("/integrations", methods=["DELETE"])
 def delete_all_integrations():
     try:
         integrations = db_session.query(Integration).all()
