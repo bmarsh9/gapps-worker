@@ -33,16 +33,17 @@ def init_integrations():
         if not existing:
             integration = Integration(
                 name=data["name"],
-                title=data["title"],
+                title=data.get("title", data["name"]),
                 description=data.get("description"),
                 schema=data.get("schema", {}),
+                schedule=data.get("schedule")
             )
             db_session.add(integration)
             created.append(data["name"])
         else:
             # Update if anything changed
             changed = False
-            for field in ["title", "description", "schema"]:
+            for field in ["title", "description", "schema", "schedule"]:
                 if data.get(field) and getattr(existing, field) != data.get(field):
                     setattr(existing, field, data.get(field))
                     changed = True
@@ -93,11 +94,12 @@ def create_integration():
 
     integration = Integration(
         name=data["name"],
-        title=data["title"],
+        title=data.get("title", data["name"]),
         description=data.get(
             "description", f"Integration:{data['name']} does not have a description"
         ),
         schema=data["schema"],
+        schedule=data.get("schedule")
     )
     db_session.add(integration)
     db_session.commit()

@@ -28,6 +28,7 @@ class Integration(Base):
     title = Column(String, nullable=False)
     description = Column(Text)
     schema = Column(JSON, default={})  # JSONSchema
+    schedule = Column(Text)
 
     deployments = relationship(
         "Deployment", backref="integration", cascade="all, delete-orphan"
