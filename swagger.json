@@ -1,0 +1,751 @@
+openapi: 3.0.3
+info:
+  title: Integrations API
+  description: API for managing integrations, deployments, jobs and violations
+  version: 1.0.0
+
+servers:
+  - url: http://localhost:8080
+    description: Local development
+
+security:
+  - BearerAuth: []
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+
+  schemas:
+    Integration:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        title:
+          type: string
+        description:
+          type: string
+        schema:
+          type: object
+
+    Deployment:
+      type: object
+      properties:
+        id:
+          type: integer
+        integration_id:
+          type: integer
+        integration_name:
+          type: string
+        config:
+          type: object
+        enabled:
+          type: boolean
+        schedule:
+          type: string
+          nullable: true
+          example: "0 * * * *"
+        queue:
+          type: string
+          example: default
+        timeout:
+          type: integer
+          example: 3600
+        status:
+          type: string
+        last_scheduled_at:
+          type: string
+          format: date-time
+          nullable: true
+
+    Job:
+      type: object
+      properties:
+        id:
+          type: integer
+        status:
+          type: string
+          enum: [queued, in-progress, done, error]
+        result:
+          type: object
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        started_at:
+          type: string
+          format: date-time
+          nullable: true
+        finished_at:
+          type: string
+          format: date-time
+          nullable: true
+        deployment_id:
+          type: integer
+        integration_name:
+          type: string
+        queue:
+          type: string
+        duration_in_queue:
+          type: integer
+          nullable: true
+        duration_in_execution:
+          type: integer
+          nullable: true
+        duration_total:
+          type: integer
+          nullable: true
+
+    Violation:
+      type: object
+      properties:
+        id:
+          type: integer
+        job_id:
+          type: integer
+        integration_name:
+          type: string
+        task_name:
+          type: string
+        control_references:
+          type: array
+          items:
+            type: object
+        output:
+          type: object
+        severity:
+          type: string
+          enum: [low, medium, high, critical]
+        description:
+          type: string
+          nullable: true
+        violation_type:
+          type: string
+          nullable: true
+        environment:
+          type: string
+          nullable: true
+        meta:
+          type: object
+        timestamp:
+          type: string
+          format: date-time
+
+    Pagination:
+      type: object
+      properties:
+        page:
+          type: integer
+        per_page:
+          type: integer
+        total:
+          type: integer
+        pages:
+          type: integer
+
+    Error:
+      type: object
+      properties:
+        error:
+          type: string
+
+tags:
+  - name: Integrations
+    description: Manage integrations
+  - name: Deployments
+    description: Manage deployments
+  - name: Jobs
+    description: Manage jobs
+  - name: Violations
+    description: View violations
+
+paths:
+
+  # -------------------------
+  # Integrations
+  # -------------------------
+
+  /init-integrations:
+    post:
+      tags: [Integrations]
+      summary: Sync integrations from GitHub
+      description: Pulls integrations.json from GitHub and creates or updates integration records in the database.
+      security: []
+      responses:
+        "200":
+          description: Sync complete
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  created:
+                    type: array
+                    items:
+                      type: string
+                  updated:
+                    type: array
+                    items:
+                      type: string
+        "502":
+          description: Failed to fetch from GitHub
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /integrations:
+    get:
+      tags: [Integrations]
+      summary: List all integrations
+      security:
+        - BearerAuth: []
+      responses:
+        "200":
+          description: List of integrations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Integration"
+
+    post:
+      tags: [Integrations]
+      summary: Create an integration
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, schema]
+              properties:
+                name:
+                  type: string
+                title:
+                  type: string
+                description:
+                  type: string
+                schema:
+                  type: object
+      responses:
+        "201":
+          description: Integration created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+        "400":
+          description: Missing fields or duplicate name
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+    delete:
+      tags: [Integrations]
+      summary: Delete all integrations
+      security: []
+      responses:
+        "200":
+          description: All integrations deleted
+        "500":
+          description: Server error
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /integrations/available:
+    get:
+      tags: [Integrations]
+      summary: List available integrations from GitHub
+      description: Fetches integrations.json from GitHub and returns only enabled integrations, cross-referenced with the database to show which are registered.
+      security: []
+      responses:
+        "200":
+          description: List of available integrations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  allOf:
+                    - $ref: "#/components/schemas/Integration"
+                    - type: object
+                      properties:
+                        enabled:
+                          type: boolean
+                        registered:
+                          type: boolean
+                        version:
+                          type: string
+                          format: date-time
+        "502":
+          description: Failed to fetch from GitHub
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+
+  /integrations/{id}:
+    get:
+      tags: [Integrations]
+      summary: Get an integration by ID
+      security:
+        - BearerAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Integration found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Integration"
+        "404":
+          description: Not found
+
+  # -------------------------
+  # Deployments
+  # -------------------------
+
+  /deployments:
+    get:
+      tags: [Deployments]
+      summary: List all deployments
+      security: []
+      responses:
+        "200":
+          description: List of deployments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Deployment"
+
+    post:
+      tags: [Deployments]
+      summary: Create a deployment
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [integration_id, config]
+              properties:
+                integration_id:
+                  type: integer
+                config:
+                  type: object
+                schedule:
+                  type: string
+                  nullable: true
+                  example: "0 * * * *"
+                queue:
+                  type: string
+                  example: default
+                timeout:
+                  type: integer
+                  example: 3600
+      responses:
+        "201":
+          description: Deployment created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deployment_id:
+                    type: integer
+        "400":
+          description: Invalid config or missing fields
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Error"
+        "404":
+          description: Integration not found
+
+  /deployments/{id}:
+    get:
+      tags: [Deployments]
+      summary: Get a deployment by ID
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        "200":
+          description: Deployment found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deployment"
+
+    put:
+      tags: [Deployments]
+      summary: Update a deployment
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                config:
+                  type: object
+                enabled:
+                  type: boolean
+                schedule:
+                  type: string
+                  nullable: true
+                queue:
+                  type: string
+                timeout:
+                  type: integer
+      responses:
+        "200":
+          description: Deployment updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Deployment"
+        "404":
+          description: Deployment not found
+        "500":
+          description: Server error
+
+  /deployments/{id}/violations:
+    get:
+      tags: [Deployments]
+      summary: List violations for a deployment
+      security: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of violations grouped by job
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  properties:
+                    job_id:
+                      type: integer
+                    status:
+                      type: string
+                    created_at:
+                      type: string
+                      format: date-time
+                    finished_at:
+                      type: string
+                      format: date-time
+                      nullable: true
+                    violations:
+                      type: array
+                      items:
+                        $ref: "#/components/schemas/Violation"
+
+  /api/deployments/scheduled:
+    get:
+      tags: [Deployments]
+      summary: List scheduled deployments
+      description: Returns all enabled deployments that have a cron schedule. Used by the scheduler.
+      security: []
+      responses:
+        "200":
+          description: List of scheduled deployments
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Deployment"
+
+  # -------------------------
+  # Jobs
+  # -------------------------
+
+  /jobs:
+    get:
+      tags: [Jobs]
+      summary: List jobs
+      security: []
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            default: 1
+        - name: per_page
+          in: query
+          schema:
+            type: integer
+            default: 20
+            maximum: 100
+        - name: before
+          in: query
+          description: Return jobs with finished_at before this date (ISO format)
+          schema:
+            type: string
+            format: date-time
+            example: "2026-01-01"
+        - name: after
+          in: query
+          description: Return jobs with finished_at after this date (ISO format)
+          schema:
+            type: string
+            format: date-time
+            example: "2025-01-01"
+      responses:
+        "200":
+          description: Paginated list of jobs
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  jobs:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/Job"
+                  pagination:
+                    $ref: "#/components/schemas/Pagination"
+
+    post:
+      tags: [Jobs]
+      summary: Create a job
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [deployment_id]
+              properties:
+                deployment_id:
+                  type: integer
+      responses:
+        "201":
+          description: Job created
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  id:
+                    type: integer
+        "400":
+          description: Missing deployment_id
+        "404":
+          description: Deployment not found
+
+    delete:
+      tags: [Jobs]
+      summary: Delete jobs by date range
+      description: Deletes jobs based on finished_at. At least one of before or after is required.
+      security: []
+      parameters:
+        - name: before
+          in: query
+          description: Delete jobs finished before this date (ISO format)
+          schema:
+            type: string
+            format: date-time
+            example: "2026-01-01"
+        - name: after
+          in: query
+          description: Delete jobs finished after this date (ISO format)
+          schema:
+            type: string
+            format: date-time
+            example: "2025-01-01"
+      responses:
+        "200":
+          description: Jobs deleted
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  deleted:
+                    type: integer
+        "400":
+          description: At least one filter required
+        "500":
+          description: Server error
+
+  /jobs/next:
+    get:
+      tags: [Jobs]
+      summary: Get next queued job
+      description: Fetches and locks the next queued job for a given queue. Used by workers.
+      security: []
+      parameters:
+        - name: queue
+          in: query
+          schema:
+            type: string
+            default: default
+      responses:
+        "200":
+          description: Job found and marked in-progress
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "204":
+          description: No jobs available
+
+  /jobs/{job_id}:
+    get:
+      tags: [Jobs]
+      summary: Get a job by ID
+      security: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Job found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Job"
+        "404":
+          description: Job not found
+
+  /jobs/{job_id}/complete:
+    post:
+      tags: [Jobs]
+      summary: Mark a job as complete
+      description: Updates job status and result. Called by workers when a job finishes.
+      security: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [done, error]
+                  default: done
+                result:
+                  type: object
+      responses:
+        "200":
+          description: Job updated
+
+  /jobs/{job_id}/violations:
+    post:
+      tags: [Jobs]
+      summary: Create a violation for a job
+      description: Called automatically by workers when an insight task detects a violation.
+      security: []
+      parameters:
+        - name: job_id
+          in: path
+          required: true
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [task_name, control_references, output]
+              properties:
+                task_name:
+                  type: string
+                control_references:
+                  type: array
+                  items:
+                    type: object
+                output:
+                  type: object
+                severity:
+                  type: string
+                  enum: [low, medium, high, critical]
+                  default: medium
+                description:
+                  type: string
+                  nullable: true
+                violation_type:
+                  type: string
+                  nullable: true
+                environment:
+                  type: string
+                  nullable: true
+                meta:
+                  type: object
+                timestamp:
+                  type: string
+                  format: date-time
+      responses:
+        "200":
+          description: Violation created
+
+  # -------------------------
+  # Violations
+  # -------------------------
+
+  /violations:
+    get:
+      tags: [Violations]
+      summary: List all violations
+      security: []
+      responses:
+        "200":
+          description: List of violations
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Violation"

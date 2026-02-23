@@ -290,6 +290,12 @@ def get_deployment(id):
     deployment = db_session.query(Deployment).filter(Deployment.id == id).first()
     return jsonify(deployment.as_dict())
 
+@app.route("/deployments/<string:id>", methods=["DELETE"])
+def delete_deployment(id):
+    deployment = db_session.query(Deployment).filter(Deployment.id == id).first()
+    db_session.delete(deployment)
+    db_session.commit()
+    return jsonify({"message": "ok"})
 
 @app.route("/jobs", methods=["GET"])
 def list_jobs():
