@@ -96,6 +96,7 @@ class Deployment(Base):
     queue = Column(String, default="default")
 
     last_scheduled_at = Column(DateTime, nullable=True)
+    project_ids = Column(String, default="")
 
     jobs = relationship(
         "Job",
@@ -121,6 +122,26 @@ class Deployment(Base):
             deployment_id=self.id,
             status="queued",
         )
+
+    def get_project_ids(self):
+        if not self.project_ids:
+            return []
+        return [i for i in self.project_ids.split(',') if i.strip()]
+
+    def set_project_ids(self, ids):
+        self.project_ids = ','.join(i for i in ids)
+
+    def add_project_id(self, project_id):
+        ids = set(self.get_project_ids())
+        ids.add(project_id)
+        self.set_project_ids(list(ids))
+
+    def remove_project_id(self, project_id):
+        ids = self.get_project_ids()
+        self.set_project_ids([i for i in ids if i != project_id])
+
+    def set_project_id_list(self, project_ids):
+        self.set_project_ids(list(set(project_ids)))  # dedupe on the way in
 
     def list_violations(self):
         jobs = sorted(

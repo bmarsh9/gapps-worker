@@ -303,6 +303,7 @@ def list_jobs():
     per_page = request.args.get('per_page', 20, type=int)
     before = request.args.get('before', None)  # e.g. 2026-01-01
     after = request.args.get('after', None)    # e.g. 2025-01-01
+    deployment_id = request.args.get('deployment_id', None)
 
     per_page = min(per_page, 100)
 
@@ -317,8 +318,11 @@ def list_jobs():
     total_jobs = query.count()
     offset = (page - 1) * per_page
 
+    if deployment_id:
+        query = query.filter(Job.deployment_id == deployment_id)
+
     jobs = query \
-        .order_by(desc(Job.created_at)) \
+        .order_by(Job.created_at.desc()) \
         .limit(per_page) \
         .offset(offset) \
         .all()
@@ -357,6 +361,57 @@ def list_violations_for_deployment(id):
     if not deployment:
         return jsonify([])
     return jsonify(deployment.list_violations())
+
+@app.route('/projects/<string:project_id>/deployments', methods=['POST'])
+def add_project_to_deployments(project_id):
+    data = request.get_json()
+    if not data or 'deployment_ids' not in data:
+        return jsonify({'message': 'deployment_ids is required'}), 400
+
+    deployment_ids = [int(i) for i in data['deployment_ids']]
+    deployments = db_session.query(Deployment).filter(Deployment.id.in_(deployment_ids)).all()
+
+    if len(deployments) != len(deployment_ids):
+        found = {d.id for d in deployments}
+        missing = [i for i in deployment_ids if i not in found]
+        return jsonify({'message': f'Deployments not found: {missing}'}), 404
+
+    added, skipped = [], []
+    for deployment in deployments:
+        existing = set(deployment.get_project_ids())
+        if project_id in existing:
+            skipped.append(deployment.id)
+        else:
+            deployment.add_project_id(project_id)
+            added.append(deployment.id)
+
+    db_session.commit()
+    return jsonify({
+        'added':   added,
+        'skipped': skipped,
+        'message': f'Project {project_id} added to {len(added)} deployment(s), {len(skipped)} already linked'
+    }), 200
+
+
+@app.route('/projects/<string:project_id>/deployments', methods=['DELETE'])
+def remove_project_from_deployments(project_id):
+    data = request.get_json()
+    if not data or 'deployment_ids' not in data:
+        return jsonify({'message': 'deployment_ids is required'}), 400
+
+    deployment_ids = [int(i) for i in data['deployment_ids']]
+    deployments = db_session.query(Deployment).filter(Deployment.id.in_(deployment_ids)).all()
+
+    removed = []
+    for deployment in deployments:
+        deployment.remove_project_id(project_id)
+        removed.append(deployment.id)
+
+    db_session.commit()
+    return jsonify({
+        'removed': removed,
+        'message': f'Project {project_id} removed from {len(removed)} deployment(s)'
+    }), 200
 
 # -------------------------
 # Cleanup
