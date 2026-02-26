@@ -17,7 +17,7 @@ if not logger.hasHandlers():
 
 
 def should_schedule(dep, now):
-    last = dep.get("last_scheduled_at")
+    last = dep.get(" ")
     if not last:
         return True
 

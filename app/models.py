@@ -27,6 +27,7 @@ class Integration(Base):
     name = Column(String, nullable=False, unique=True)
     title = Column(String, nullable=False)
     description = Column(Text)
+    is_service = Column(Boolean, default=False)
     schema = Column(JSON, default={})  # JSONSchema
     schedule = Column(Text)
 
@@ -114,6 +115,7 @@ class Deployment(Base):
         if self.last_scheduled_at:
             data["last_scheduled_at"] = self.last_scheduled_at.isoformat()
         data["integration_name"] = self.integration.name if self.integration else None
+        data["is_service"] = self.integration.is_service
         return data
 
     def create_job(self):
